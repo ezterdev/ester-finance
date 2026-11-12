@@ -1,0 +1,723 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=0">
+  <title>Klir. — Mindful Finance</title>
+
+  <!-- Tailwind CSS & Google Font -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+  <!-- Lucide Icons, Chart.js, & SheetJS (Excel Generator) -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+
+  <style>
+    body { font-family: 'Plus Jakarta Sans', sans-serif; background-color: #FAF8F5; }
+    .hide-scrollbar::-webkit-scrollbar { display: none; }
+    .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+  </style>
+</head>
+<body class="text-stone-800 antialiased selection:bg-stone-200">
+
+  <!-- ==================== 1. LAYAR KUNCI PIN ==================== -->
+  <div id="pinScreen" class="fixed inset-0 bg-[#FAF8F5] z-50 flex flex-col items-center justify-center p-6">
+    <div class="w-full max-w-xs text-center space-y-6">
+      <div class="w-16 h-16 bg-stone-200/70 rounded-full flex items-center justify-center text-stone-700 mx-auto shadow-inner">
+        <i data-lucide="shield-check" class="w-8 h-8"></i>
+      </div>
+      <div>
+        <h2 class="text-2xl font-extrabold tracking-tight text-stone-800">Klir.</h2>
+        <p class="text-xs text-stone-400 mt-1">Keuangan Pribadi Ester • Masukkan PIN</p>
+      </div>
+      <div>
+        <input type="password" id="pinInput" maxlength="6" inputmode="numeric" placeholder="••••••" 
+               class="tracking-widest text-center text-3xl font-bold border-b-2 border-stone-300 focus:border-stone-800 outline-none w-48 pb-2 bg-transparent text-stone-800 transition-all"/>
+      </div>
+      <button onclick="verifyPin()" class="w-full bg-stone-800 text-stone-50 py-3.5 rounded-2xl font-semibold text-xs hover:bg-stone-900 active:scale-95 transition-all shadow-sm">
+        Buka Catatan
+      </button>
+      <p id="pinError" class="text-xs text-rose-500 font-medium hidden">PIN salah! Coba lagi (Bawaan: 123456)</p>
+    </div>
+  </div>
+
+  <!-- ==================== 2. APLIKASI UTAMA ==================== -->
+  <div id="appContainer" class="hidden min-h-screen pb-28">
+    
+    <!-- Top Header -->
+    <header class="sticky top-0 bg-[#FAF8F5]/90 backdrop-blur-md border-b border-stone-200/60 z-20 px-5 py-3.5 max-w-3xl mx-auto flex justify-between items-center">
+      <div class="flex items-center gap-2.5">
+        <div class="w-8 h-8 bg-stone-800 text-stone-100 rounded-xl flex items-center justify-center font-extrabold text-sm shadow-xs">K</div>
+        <div>
+          <h1 class="text-base font-bold tracking-tight text-stone-800 leading-none">Klir.</h1>
+          <p class="text-[10px] text-stone-400 font-medium mt-0.5">Budget Ester (Rp7.000.000)</p>
+        </div>
+      </div>
+      <div class="flex items-center gap-2">
+        <button onclick="exportToExcel()" class="flex items-center gap-1.5 text-xs bg-white border border-stone-200 text-stone-600 px-3 py-1.5 rounded-full font-medium hover:bg-stone-50 transition-all shadow-2xs">
+          <i data-lucide="file-spreadsheet" class="w-3.5 h-3.5 text-emerald-600"></i>
+          <span>Excel</span>
+        </button>
+        <button onclick="openModal('settingsModal')" class="p-2 text-stone-500 hover:text-stone-800 rounded-full hover:bg-stone-200/50" title="Pengaturan">
+          <i data-lucide="settings" class="w-4 h-4"></i>
+        </button>
+        <button onclick="lockApp()" class="p-2 text-stone-500 hover:text-stone-800 rounded-full hover:bg-stone-200/50" title="Kunci Aplikasi">
+          <i data-lucide="lock" class="w-4 h-4"></i>
+        </button>
+      </div>
+    </header>
+
+    <main class="max-w-3xl mx-auto p-5 space-y-6">
+
+      <!-- PAYDAY PACING & BURN-RATE HERO CARD -->
+      <div class="bg-gradient-to-br from-stone-850 via-stone-800 to-stone-900 text-stone-100 p-6 rounded-3xl shadow-sm space-y-5">
+        <div class="flex justify-between items-start">
+          <div>
+            <div class="text-[11px] uppercase tracking-wider text-stone-400 font-semibold">Hitung Mundur Gajian</div>
+            <div class="flex items-baseline gap-2 mt-0.5">
+              <span id="heroDaysLeft" class="text-3xl font-extrabold tracking-tight">-- Hari</span>
+              <span id="heroPaydayDate" class="text-xs text-stone-400 font-medium">(--)</span>
+            </div>
+          </div>
+          <div class="bg-stone-700/60 px-3 py-1 rounded-full text-[11px] text-stone-300 font-medium flex items-center gap-1.5">
+            <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+            Weekend auto-dimajukan
+          </div>
+        </div>
+
+        <div class="grid grid-cols-3 gap-3 pt-4 border-t border-stone-700/50 text-center">
+          <div class="bg-stone-800/60 p-3 rounded-2xl border border-stone-700/40">
+            <div class="text-[10px] text-stone-400">Sisa Kuota Belanja</div>
+            <div id="heroRemainingSafe" class="text-sm font-bold text-emerald-400 mt-0.5">Rp0</div>
+            <div id="heroSafeBurn" class="text-[9px] text-stone-400 mt-1">Rp0 / hari</div>
+          </div>
+          <div class="bg-stone-800/60 p-3 rounded-2xl border border-stone-700/40">
+            <div class="text-[10px] text-stone-400">Total Savings Ester</div>
+            <div id="heroSavings" class="text-sm font-bold text-amber-300 mt-0.5">Rp0</div>
+            <div class="text-[9px] text-stone-400 mt-1">35% Terkumpul</div>
+          </div>
+          <div class="bg-stone-800/60 p-3 rounded-2xl border border-stone-700/40">
+            <div class="text-[10px] text-stone-400">Uang Ditalangin</div>
+            <div id="heroTalangan" class="text-sm font-bold text-rose-300 mt-0.5">Rp0</div>
+            <div id="heroTalanganCount" class="text-[9px] text-stone-400 mt-1">0 Orang</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- KANTONG BANK AGGREGATOR -->
+      <div class="space-y-2">
+        <div class="flex justify-between items-center">
+          <h2 class="text-xs font-bold uppercase tracking-wider text-stone-400">Sebaran Saldo Menurut Bank</h2>
+          <span class="text-[11px] text-stone-400">Live Pocket Aggregate</span>
+        </div>
+        <div id="bankPills" class="flex gap-2.5 overflow-x-auto pb-1 hide-scrollbar"></div>
+      </div>
+
+      <!-- MODUL TALANGAN (ANTI-AMNESIA) -->
+      <div id="talanganSection" class="hidden bg-amber-50/70 border border-amber-200/60 rounded-3xl p-4 space-y-3">
+        <div class="flex justify-between items-center">
+          <div class="flex items-center gap-1.5 text-amber-900 font-bold text-xs uppercase tracking-wider">
+            <i data-lucide="users" class="w-4 h-4 text-amber-700"></i>
+            Talangan yang Belum Dibayar Teman
+          </div>
+          <span id="talanganBadge" class="text-[11px] font-semibold text-amber-800 bg-amber-100 px-2 py-0.5 rounded-full">0</span>
+        </div>
+        <div id="talanganList" class="space-y-2"></div>
+      </div>
+
+      <!-- GRAFIK KOMPOSISI 45-20-35 -->
+      <div class="bg-white p-5 rounded-3xl border border-stone-200/70 shadow-2xs space-y-3">
+        <div class="flex justify-between items-center">
+          <h3 class="text-xs font-bold uppercase tracking-wider text-stone-400">Komposisi Pengeluaran Aktual</h3>
+          <span class="text-[11px] text-stone-400 font-medium">45% Keb • 20% Keing • 35% Sav</span>
+        </div>
+        <div class="h-44 flex items-center justify-center">
+          <canvas id="ratioChart"></canvas>
+        </div>
+      </div>
+
+      <!-- MONITOR BUDGETING ESTER -->
+      <div class="space-y-3">
+        <div class="flex justify-between items-center">
+          <h2 class="text-xs font-bold uppercase tracking-wider text-stone-400">Monitor Pos Budgeting</h2>
+          <div class="flex gap-1.5">
+            <button onclick="filterGroup('ALL')" class="filter-btn text-[11px] font-semibold px-2.5 py-1 rounded-full bg-stone-800 text-stone-50" data-group="ALL">Semua</button>
+            <button onclick="filterGroup('KEBUTUHAN')" class="filter-btn text-[11px] font-semibold px-2.5 py-1 rounded-full bg-stone-100 text-stone-600 hover:bg-stone-200" data-group="KEBUTUHAN">45%</button>
+            <button onclick="filterGroup('KEINGINAN')" class="filter-btn text-[11px] font-semibold px-2.5 py-1 rounded-full bg-stone-100 text-stone-600 hover:bg-stone-200" data-group="KEINGINAN">20%</button>
+            <button onclick="filterGroup('SAVINGS')" class="filter-btn text-[11px] font-semibold px-2.5 py-1 rounded-full bg-stone-100 text-stone-600 hover:bg-stone-200" data-group="SAVINGS">35%</button>
+          </div>
+        </div>
+        <div id="budgetList" class="space-y-2.5"></div>
+      </div>
+
+      <!-- RIWAYAT TRANSAKSI -->
+      <div class="space-y-3 pt-2">
+        <div class="flex justify-between items-center">
+          <h2 class="text-xs font-bold uppercase tracking-wider text-stone-400">Riwayat Transaksi</h2>
+          <span id="txCount" class="text-[11px] text-stone-400">0 transaksi</span>
+        </div>
+        <div id="txList" class="bg-white border border-stone-200/70 rounded-2xl divide-y divide-stone-100 shadow-2xs"></div>
+      </div>
+
+    </main>
+
+    <!-- FLOATING ACTIONS -->
+    <div class="fixed bottom-6 inset-x-0 max-w-3xl mx-auto px-5 flex justify-end gap-2.5 z-20 pointer-events-none">
+      <button onclick="openModal('incomeModal')" class="pointer-events-auto bg-stone-100 border border-stone-300 text-stone-700 px-4 py-3 rounded-full text-xs font-semibold shadow-md active:scale-95 transition-all flex items-center gap-1.5 hover:bg-stone-200">
+        <i data-lucide="trending-up" class="w-3.5 h-3.5 text-emerald-600"></i>
+        <span>+ Usaha / Masuk</span>
+      </button>
+      <button onclick="openModal('expenseModal')" class="pointer-events-auto bg-stone-900 text-stone-50 px-5 py-3 rounded-full text-xs font-semibold shadow-lg active:scale-95 transition-all flex items-center gap-1.5 hover:bg-black">
+        <i data-lucide="plus" class="w-4 h-4"></i>
+        <span>Catat Belanja</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- ==================== 3. MODALS ==================== -->
+
+  <!-- MODAL: CATAT PENGELUARAN & TALANGAN -->
+  <div id="expenseModal" class="hidden fixed inset-0 bg-stone-900/40 backdrop-blur-xs z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
+    <div class="bg-white w-full max-w-md rounded-t-3xl sm:rounded-3xl p-6 space-y-4 max-h-[90vh] overflow-y-auto">
+      <div class="flex justify-between items-center pb-2 border-b border-stone-100">
+        <h3 class="font-bold text-stone-800 text-base">Catat Pengeluaran</h3>
+        <button onclick="closeModal('expenseModal')" class="text-stone-400 hover:text-stone-700 text-sm">✕</button>
+      </div>
+
+      <div class="space-y-3">
+        <div>
+          <label class="text-[11px] font-bold uppercase text-stone-400 tracking-wider">Pilih Pos & Kantong</label>
+          <select id="modalExpensePos" class="w-full mt-1 bg-stone-50 border border-stone-200 p-3 rounded-xl text-xs font-medium outline-none focus:border-stone-800"></select>
+        </div>
+        <div>
+          <label class="text-[11px] font-bold uppercase text-stone-400 tracking-wider">Nominal Belanja (Rp)</label>
+          <input type="number" id="modalExpenseAmount" placeholder="Contoh: 45000" class="w-full mt-1 bg-stone-50 border border-stone-200 p-3 rounded-xl text-sm font-semibold outline-none focus:border-stone-800"/>
+        </div>
+        <div>
+          <label class="text-[11px] font-bold uppercase text-stone-400 tracking-wider">Catatan</label>
+          <input type="text" id="modalExpenseNote" placeholder="Makan siang, bensin, dll" class="w-full mt-1 bg-stone-50 border border-stone-200 p-3 rounded-xl text-xs outline-none focus:border-stone-800"/>
+        </div>
+
+        <!-- FITUR TALANGAN TOGGLE -->
+        <div class="p-3 bg-amber-50/70 rounded-xl border border-amber-200/60 space-y-2">
+          <label class="flex items-center gap-2 cursor-pointer">
+            <input type="checkbox" id="modalIsTalangan" onchange="document.getElementById('debtorContainer').classList.toggle('hidden', !this.checked)" class="rounded text-amber-600 focus:ring-amber-500"/>
+            <span class="text-xs font-semibold text-amber-900">Ini Talangan / Patungan Teman</span>
+          </label>
+          <div id="debtorContainer" class="hidden">
+            <input type="text" id="modalDebtorName" placeholder="Nama teman (Contoh: Sarah / Dika)" class="w-full bg-white border border-amber-200 p-2.5 rounded-lg text-xs outline-none"/>
+            <p class="text-[10px] text-amber-700 mt-1">*Uang fisik kantong terpotong, tapi anggaran makan/jajan Anda tidak berkurang.</p>
+          </div>
+        </div>
+
+        <button onclick="handleSaveExpense()" class="w-full bg-stone-800 text-stone-50 py-3.5 rounded-xl font-medium text-xs hover:bg-stone-900 transition-all">
+          Simpan Transaksi
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: PEMASUKAN USAHA -->
+  <div id="incomeModal" class="hidden fixed inset-0 bg-stone-900/40 backdrop-blur-xs z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
+    <div class="bg-white w-full max-w-md rounded-t-3xl sm:rounded-3xl p-6 space-y-4 max-h-[90vh] overflow-y-auto">
+      <div class="flex justify-between items-center pb-2 border-b border-stone-100">
+        <h3 class="font-bold text-stone-800 text-base">Pemasukan Usaha / Tambahan</h3>
+        <button onclick="closeModal('incomeModal')" class="text-stone-400 hover:text-stone-700 text-sm">✕</button>
+      </div>
+
+      <div class="space-y-3">
+        <div>
+          <label class="text-[11px] font-bold uppercase text-stone-400 tracking-wider">Nominal Pemasukan (Rp)</label>
+          <input type="number" id="modalIncomeAmount" placeholder="Contoh: 250000" class="w-full mt-1 bg-stone-50 border border-stone-200 p-3 rounded-xl text-sm font-semibold outline-none focus:border-stone-800"/>
+        </div>
+        <div>
+          <label class="text-[11px] font-bold uppercase text-stone-400 tracking-wider">Sumber Pemasukan</label>
+          <input type="text" id="modalIncomeNote" placeholder="Orderan usaha, komisi jualan, dll" class="w-full mt-1 bg-stone-50 border border-stone-200 p-3 rounded-xl text-xs outline-none focus:border-stone-800"/>
+        </div>
+        <div>
+          <label class="text-[11px] font-bold uppercase text-stone-400 tracking-wider">Mau Dialokasikan Kemana?</label>
+          <select id="modalIncomeAction" onchange="document.getElementById('incomeInjectContainer').classList.toggle('hidden', this.value !== 'INJECT')" class="w-full mt-1 bg-stone-50 border border-stone-200 p-3 rounded-xl text-xs font-medium outline-none focus:border-stone-800">
+            <option value="RESERVE">Simpan sebagai Dana Mengendap (Buffer)</option>
+            <option value="INJECT">Suntikkan / Tambah ke Pos Budget Bulan Ini</option>
+          </select>
+        </div>
+        <div id="incomeInjectContainer" class="hidden">
+          <label class="text-[11px] font-bold uppercase text-stone-400 tracking-wider">Pilih Pos yang Mau Ditambah</label>
+          <select id="modalIncomePos" class="w-full mt-1 bg-stone-50 border border-stone-200 p-3 rounded-xl text-xs font-medium outline-none focus:border-stone-800"></select>
+        </div>
+
+        <button onclick="handleSaveIncome()" class="w-full bg-stone-800 text-stone-50 py-3.5 rounded-xl font-medium text-xs hover:bg-stone-900 transition-all">
+          Simpan Pemasukan
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: SETTINGS (GANTI PIN & TANGGAL GAJIAN) -->
+  <div id="settingsModal" class="hidden fixed inset-0 bg-stone-900/40 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+    <div class="bg-white w-full max-w-sm rounded-3xl p-6 space-y-4">
+      <div class="flex justify-between items-center pb-2 border-b border-stone-100">
+        <h3 class="font-bold text-stone-800 text-base">Pengaturan</h3>
+        <button onclick="closeModal('settingsModal')" class="text-stone-400 hover:text-stone-700 text-sm">✕</button>
+      </div>
+      <div class="space-y-3">
+        <div>
+          <label class="text-[11px] font-bold uppercase text-stone-400 tracking-wider">Ganti 6-Digit PIN</label>
+          <input type="password" id="settingPin" maxlength="6" class="w-full mt-1 bg-stone-50 border border-stone-200 p-2.5 rounded-xl text-sm font-semibold outline-none focus:border-stone-800"/>
+        </div>
+        <div>
+          <label class="text-[11px] font-bold uppercase text-stone-400 tracking-wider">Tanggal Gajian</label>
+          <input type="number" id="settingPayday" min="1" max="31" class="w-full mt-1 bg-stone-50 border border-stone-200 p-2.5 rounded-xl text-sm font-semibold outline-none focus:border-stone-800"/>
+        </div>
+        <button onclick="saveSettings()" class="w-full bg-stone-800 text-stone-50 py-3 rounded-xl font-medium text-xs hover:bg-stone-900 transition-all">
+          Simpan Pengaturan
+        </button>
+        <button onclick="resetToInitialData()" class="w-full text-rose-500 py-2 text-[11px] font-semibold hover:underline">
+          Reset ke Data Awal Spreadsheet
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== 4. SISTEM LOGIKA JS ==================== -->
+  <script>
+    // DATA DEFAULT DARI SPREADSHEET ESTER (7.000.000)
+    const DEFAULT_DATA = {
+      config: { pin: "123456", paydayDate: 25, totalBudget: 7000000 },
+      budgets: [
+        { id: 1, name: "Wifi", group: "KEBUTUHAN", budget: 250000, pocket: "LISTRIK WIFI HALO ARISAN", bank: "KROM", spent: 0 },
+        { id: 2, name: "Spending", group: "KEBUTUHAN", budget: 700000, pocket: "SPENDING", bank: "JAGO", spent: 0 },
+        { id: 3, name: "Bensin", group: "KEBUTUHAN", budget: 175000, pocket: "BENSIN OLI", bank: "KROM", spent: 0 },
+        { id: 4, name: "Gym", group: "KEBUTUHAN", budget: 500000, pocket: "TABUNGAN UTAMA", bank: "MANDIRI", spent: 0 },
+        { id: 5, name: "Tagihan Halo", group: "KEBUTUHAN", budget: 111000, pocket: "LISTRIK WIFI HALO ARISAN", bank: "KROM", spent: 0 },
+        { id: 6, name: "Makan Siang", group: "KEBUTUHAN", budget: 1064000, pocket: "MAKAN WEEKDAYS", bank: "KROM", spent: 0 },
+        { id: 7, name: "Arisan Pomp. Op. Okta", group: "KEBUTUHAN", budget: 100000, pocket: "LISTRIK WIFI HALO ARISAN", bank: "KROM", spent: 0 },
+        { id: 8, name: "Listrik", group: "KEBUTUHAN", budget: 200000, pocket: "LISTRIK WIFI HALO ARISAN", bank: "KROM", spent: 0 },
+        { id: 9, name: "OLI", group: "KEBUTUHAN", budget: 50000, pocket: "BENSIN OLI", bank: "KROM", spent: 0 },
+        
+        { id: 10, name: "Shopee", group: "KEINGINAN", budget: 600000, pocket: "SHOPPE PAY", bank: "E-WALLET", spent: 0 },
+        { id: 11, name: "IPL", group: "KEINGINAN", budget: 200000, pocket: "TABUNGAN UTAMA", bank: "BCA", spent: 0 },
+        { id: 12, name: "GIFT (Kado/Patungan)", group: "KEINGINAN", budget: 300000, pocket: "GIFT", bank: "KROM", spent: 0 },
+        { id: 13, name: "Jajan", group: "KEINGINAN", budget: 300000, pocket: "GOPAY", bank: "E-WALLET", spent: 0 },
+        
+        { id: 14, name: "Jepang PLZ", group: "SAVINGS", budget: 1200000, pocket: "JEPANG PLZ", bank: "KROM", spent: 1200000 },
+        { id: 15, name: "Asuransi CAR", group: "SAVINGS", budget: 350000, pocket: "TABUNGAN UTAMA", bank: "BCA", spent: 350000 },
+        { id: 16, name: "Auto Debet Bibit", group: "SAVINGS", budget: 100000, pocket: "TABUNGAN UTAMA", bank: "BCA", spent: 100000 },
+        { id: 17, name: "Belitung", group: "SAVINGS", budget: 200000, pocket: "BELITUNG", bank: "KROM", spent: 200000 },
+        { id: 18, name: "Dana Darurat", group: "SAVINGS", budget: 600000, pocket: "DANA DARURAT", bank: "KROM", spent: 600000 }
+      ],
+      transactions: [],
+      receivables: []
+    };
+
+    function getStoredData() {
+      const data = localStorage.getItem('klir_finance_ester');
+      return data ? JSON.parse(data) : DEFAULT_DATA;
+    }
+
+    function saveData(data) {
+      localStorage.setItem('klir_finance_ester', JSON.stringify(data));
+      renderApp();
+    }
+
+    // HITUNG GAJIAN DENGAN PENYESUAIAN LIBUR/WEEKEND
+    function calculatePaydayPacing(targetDay) {
+      const now = new Date();
+      let payday = new Date(now.getFullYear(), now.getMonth(), targetDay);
+      if (now.getDate() > payday.getDate()) {
+        payday = new Date(now.getFullYear(), now.getMonth() + 1, targetDay);
+      }
+      const day = payday.getDay();
+      if (day === 6) payday.setDate(payday.getDate() - 1);
+      else if (day === 0) payday.setDate(payday.getDate() - 2);
+
+      const diffTime = payday.getTime() - now.getTime();
+      const daysLeft = Math.max(0, Math.ceil(diffTime / (1000 * 60 * 60 * 24)));
+      return {
+        daysLeft,
+        dateFormatted: payday.toLocaleDateString('id-ID', { weekday: 'short', day: 'numeric', month: 'short' })
+      };
+    }
+
+    // SECURITY PIN CHECK
+    function verifyPin() {
+      const data = getStoredData();
+      const input = document.getElementById('pinInput').value;
+      if (input === data.config.pin) {
+        document.getElementById('pinScreen').classList.add('hidden');
+        document.getElementById('appContainer').classList.remove('hidden');
+        document.getElementById('pinError').classList.add('hidden');
+        renderApp();
+      } else {
+        document.getElementById('pinError').classList.remove('hidden');
+      }
+    }
+
+    function lockApp() {
+      document.getElementById('pinInput').value = '';
+      document.getElementById('pinScreen').classList.remove('hidden');
+      document.getElementById('appContainer').classList.add('hidden');
+    }
+
+    // FILTER & MODAL HELPERS
+    let currentFilter = 'ALL';
+    function filterGroup(grp) {
+      currentFilter = grp;
+      document.querySelectorAll('.filter-btn').forEach(b => {
+        if (b.dataset.group === grp) {
+          b.className = 'filter-btn text-[11px] font-semibold px-2.5 py-1 rounded-full bg-stone-800 text-stone-50';
+        } else {
+          b.className = 'filter-btn text-[11px] font-semibold px-2.5 py-1 rounded-full bg-stone-100 text-stone-600 hover:bg-stone-200';
+        }
+      });
+      renderBudgetList();
+    }
+
+    function openModal(id) { document.getElementById(id).classList.remove('hidden'); }
+    function closeModal(id) { document.getElementById(id).classList.add('hidden'); }
+
+    let ratioChart = null;
+
+    // RENDER UTAMA
+    function renderApp() {
+      const data = getStoredData();
+      const payday = calculatePaydayPacing(data.config.paydayDate);
+
+      // 1. Hero Card
+      document.getElementById('heroDaysLeft').innerText = `${payday.daysLeft} Hari Lagi`;
+      document.getElementById('heroPaydayDate').innerText = `(${payday.dateFormatted})`;
+
+      const totalSavingsTarget = data.budgets.filter(b => b.group === 'SAVINGS').reduce((a, c) => a + c.budget, 0);
+      const totalExpenseNonSavings = data.budgets.filter(b => b.group !== 'SAVINGS').reduce((a, c) => a + c.spent, 0);
+      const operationalBudget = data.config.totalBudget - totalSavingsTarget;
+      const remainingSafeSpend = Math.max(0, operationalBudget - totalExpenseNonSavings);
+      const safeBurnPerDay = payday.daysLeft > 0 ? Math.round(remainingSafeSpend / payday.daysLeft) : remainingSafeSpend;
+
+      const totalTalangan = data.receivables.filter(r => !r.isSettled).reduce((a, c) => a + c.amount, 0);
+      const activeTalanganCount = data.receivables.filter(r => !r.isSettled).length;
+
+      document.getElementById('heroRemainingSafe').innerText = `Rp${remainingSafeSpend.toLocaleString('id-ID')}`;
+      document.getElementById('heroSafeBurn').innerText = `Aman: Rp${safeBurnPerDay.toLocaleString('id-ID')} / hari`;
+      document.getElementById('heroSavings').innerText = `Rp${totalSavingsTarget.toLocaleString('id-ID')}`;
+      document.getElementById('heroTalangan').innerText = `Rp${totalTalangan.toLocaleString('id-ID')}`;
+      document.getElementById('heroTalanganCount').innerText = `${activeTalanganCount} Orang Ditalangin`;
+
+      // 2. Bank Aggregator
+      const bankAgg = {};
+      data.budgets.forEach(b => {
+        if (!bankAgg[b.bank]) bankAgg[b.bank] = 0;
+        bankAgg[b.bank] += (b.budget - b.spent);
+      });
+      const bankPills = document.getElementById('bankPills');
+      bankPills.innerHTML = Object.keys(bankAgg).map(bank => `
+        <div class="bg-white border border-stone-200/80 px-3.5 py-2 rounded-2xl flex-shrink-0 shadow-2xs">
+          <div class="text-[10px] font-bold text-stone-400 uppercase tracking-wider">${bank}</div>
+          <div class="text-xs font-bold text-stone-700 mt-0.5">Rp${bankAgg[bank].toLocaleString('id-ID')}</div>
+        </div>
+      `).join('');
+
+      // 3. Talangan Tracker
+      const talanganSection = document.getElementById('talanganSection');
+      const talanganList = document.getElementById('talanganList');
+      const unSettled = data.receivables.filter(r => !r.isSettled);
+
+      if (unSettled.length > 0) {
+        talanganSection.classList.remove('hidden');
+        document.getElementById('talanganBadge').innerText = unSettled.length;
+        talanganList.innerHTML = unSettled.map(t => `
+          <div class="bg-white p-3 rounded-2xl border border-amber-100 flex justify-between items-center shadow-2xs">
+            <div>
+              <div class="text-xs font-bold text-stone-800">${t.debtor} — ${t.note}</div>
+              <div class="text-[10px] text-stone-400">${t.date} • Dipotong dari ${t.pocket}</div>
+            </div>
+            <div class="flex items-center gap-2">
+              <span class="text-xs font-bold text-rose-600">Rp${t.amount.toLocaleString('id-ID')}</span>
+              <button onclick="settleTalangan('${t.id}')" class="text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 px-2.5 py-1 rounded-lg hover:bg-emerald-100 transition-colors">
+                Lunas
+              </button>
+            </div>
+          </div>
+        `).join('');
+      } else {
+        talanganSection.classList.add('hidden');
+      }
+
+      // 4. Render Pos, Riwayat, & Chart
+      renderBudgetList();
+      renderTransactions();
+      renderChart();
+
+      // Isi Select Dropdown di Modal
+      const modalSelect = document.getElementById('modalExpensePos');
+      const incomeSelect = document.getElementById('modalIncomePos');
+      const optionsHtml = data.budgets.map(b => `<option value="${b.id}">${b.name} — ${b.pocket} (${b.bank})</option>`).join('');
+      modalSelect.innerHTML = optionsHtml;
+      incomeSelect.innerHTML = optionsHtml;
+
+      lucide.createIcons();
+    }
+
+    function renderBudgetList() {
+      const data = getStoredData();
+      const payday = calculatePaydayPacing(data.config.paydayDate);
+      const budgetList = document.getElementById('budgetList');
+
+      const filtered = currentFilter === 'ALL' ? data.budgets : data.budgets.filter(b => b.group === currentFilter);
+
+      budgetList.innerHTML = filtered.map(b => {
+        const percent = Math.min(100, Math.round((b.spent / b.budget) * 100));
+        const remaining = Math.max(0, b.budget - b.spent);
+        const safePerDay = payday.daysLeft > 0 ? Math.round(remaining / payday.daysLeft) : remaining;
+
+        const isHigh = percent >= 85;
+        const barColor = isHigh ? 'bg-rose-400' : (percent >= 60 ? 'bg-amber-400' : 'bg-emerald-500');
+
+        return `
+          <div class="bg-white p-4 rounded-2xl border border-stone-200/70 shadow-2xs space-y-2.5">
+            <div class="flex justify-between items-start">
+              <div>
+                <div class="text-xs font-bold text-stone-800">${b.name}</div>
+                <div class="text-[10px] text-stone-400 font-medium">${b.pocket} (${b.bank})</div>
+              </div>
+              <span class="text-[10px] font-bold px-2 py-0.5 rounded-full ${isHigh ? 'bg-rose-50 text-rose-700' : 'bg-stone-100 text-stone-600'}">
+                ${percent}%
+              </span>
+            </div>
+
+            <div class="w-full bg-stone-100 h-1.5 rounded-full overflow-hidden">
+              <div class="${barColor} h-full transition-all duration-300" style="width: ${percent}%"></div>
+            </div>
+
+            <div class="flex justify-between items-baseline text-[11px] pt-0.5">
+              <span class="text-stone-400">Sisa: <strong class="text-stone-700">Rp${remaining.toLocaleString('id-ID')}</strong></span>
+              ${b.group !== 'SAVINGS' 
+                ? `<span class="text-stone-400">Aman: <strong class="text-stone-700">Rp${safePerDay.toLocaleString('id-ID')}/hr</strong></span>` 
+                : '<span class="text-amber-600 font-semibold text-[10px]">Pos Tabungan</span>'}
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function renderTransactions() {
+      const data = getStoredData();
+      const txList = document.getElementById('txList');
+      document.getElementById('txCount').innerText = `${data.transactions.length} transaksi`;
+
+      if (data.transactions.length === 0) {
+        txList.innerHTML = '<div class="p-4 text-center text-xs text-stone-400">Belum ada transaksi bulan ini</div>';
+        return;
+      }
+
+      txList.innerHTML = data.transactions.slice(0, 10).map(tx => `
+        <div class="p-3.5 flex justify-between items-center text-xs">
+          <div>
+            <div class="font-bold text-stone-800">${tx.posName}</div>
+            <div class="text-[10px] text-stone-400">${tx.date} ${tx.note ? '• ' + tx.note : ''}</div>
+          </div>
+          <span class="font-bold ${tx.type === 'EXPENSE' ? 'text-stone-700' : 'text-emerald-600'}">
+            ${tx.type === 'EXPENSE' ? '-' : '+'}Rp${tx.amount.toLocaleString('id-ID')}
+          </span>
+        </div>
+      `).join('');
+    }
+
+    function renderChart() {
+      const data = getStoredData();
+      const ctx = document.getElementById('ratioChart').getContext('2d');
+      const totalKeb = data.budgets.filter(b => b.group === 'KEBUTUHAN').reduce((a, c) => a + c.spent, 0);
+      const totalKei = data.budgets.filter(b => b.group === 'KEINGINAN').reduce((a, c) => a + c.spent, 0);
+      const totalSav = data.budgets.filter(b => b.group === 'SAVINGS').reduce((a, c) => a + c.budget, 0);
+
+      if (ratioChart) ratioChart.destroy();
+      ratioChart = new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+          labels: ['Kebutuhan', 'Keinginan', 'Savings'],
+          datasets: [{
+            data: [totalKeb, totalKei, totalSav],
+            backgroundColor: ['#78716C', '#C86D51', '#EAB308'],
+            borderWidth: 0
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { position: 'bottom', labels: { boxWidth: 10, font: { size: 10 } } }
+          },
+          cutout: '72%'
+        }
+      });
+    }
+
+    // ACTIONS: TRANSAKSI & TALANGAN
+    function handleSaveExpense() {
+      const posId = Number(document.getElementById('modalExpensePos').value);
+      const amount = Number(document.getElementById('modalExpenseAmount').value);
+      const note = document.getElementById('modalExpenseNote').value;
+      const isTalangan = document.getElementById('modalIsTalangan').checked;
+      const debtor = document.getElementById('modalDebtorName').value;
+
+      if (!amount || amount <= 0) return alert('Masukkan nominal pengeluaran');
+      if (isTalangan && !debtor) return alert('Masukkan nama teman yang ditalangi');
+
+      const data = getStoredData();
+      const targetPos = data.budgets.find(b => b.id === posId);
+      const now = new Date();
+      const dateStr = now.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+
+      if (isTalangan) {
+        data.receivables.unshift({
+          id: 'T_' + Date.now(),
+          debtor,
+          amount,
+          note: note || targetPos.name,
+          pocket: targetPos.pocket,
+          date: dateStr,
+          isSettled: false
+        });
+      } else {
+        targetPos.spent += amount;
+        data.transactions.unshift({
+          id: 'TX_' + Date.now(),
+          posName: targetPos.name,
+          amount,
+          note,
+          type: 'EXPENSE',
+          date: dateStr
+        });
+      }
+
+      saveData(data);
+      closeModal('expenseModal');
+      document.getElementById('modalExpenseAmount').value = '';
+      document.getElementById('modalExpenseNote').value = '';
+      document.getElementById('modalDebtorName').value = '';
+      document.getElementById('modalIsTalangan').checked = false;
+      document.getElementById('debtorContainer').classList.add('hidden');
+    }
+
+    function handleSaveIncome() {
+      const amount = Number(document.getElementById('modalIncomeAmount').value);
+      const note = document.getElementById('modalIncomeNote').value;
+      const action = document.getElementById('modalIncomeAction').value;
+      const posId = Number(document.getElementById('modalIncomePos').value);
+
+      if (!amount || amount <= 0) return alert('Masukkan nominal pemasukan');
+
+      const data = getStoredData();
+      const now = new Date();
+      const dateStr = now.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' });
+
+      if (action === 'INJECT' && posId) {
+        const targetPos = data.budgets.find(b => b.id === posId);
+        targetPos.budget += amount;
+        data.transactions.unshift({
+          id: 'TX_' + Date.now(),
+          posName: 'Suntik: ' + targetPos.name,
+          amount,
+          note: note || 'Pemasukan Usaha',
+          type: 'INCOME',
+          date: dateStr
+        });
+      } else {
+        data.transactions.unshift({
+          id: 'TX_' + Date.now(),
+          posName: 'Dana Mengendap / Buffer',
+          amount,
+          note: note || 'Buffer Usaha',
+          type: 'INCOME',
+          date: dateStr
+        });
+      }
+
+      saveData(data);
+      closeModal('incomeModal');
+      document.getElementById('modalIncomeAmount').value = '';
+      document.getElementById('modalIncomeNote').value = '';
+    }
+
+    function settleTalangan(id) {
+      if (!confirm('Tandai talangan ini sudah dibayar lunas?')) return;
+      const data = getStoredData();
+      const item = data.receivables.find(r => r.id === id);
+      if (item) {
+        item.isSettled = true;
+        saveData(data);
+      }
+    }
+
+    function saveSettings() {
+      const pin = document.getElementById('settingPin').value;
+      const payday = Number(document.getElementById('settingPayday').value);
+      const data = getStoredData();
+
+      if (pin && pin.length === 6) data.config.pin = pin;
+      if (payday >= 1 && payday <= 31) data.config.paydayDate = payday;
+
+      saveData(data);
+      closeModal('settingsModal');
+      alert('Pengaturan berhasil disimpan!');
+    }
+
+    function resetToInitialData() {
+      if (confirm('Kembalikan ke susunan spreadsheet awal Ester?')) {
+        saveData(DEFAULT_DATA);
+        closeModal('settingsModal');
+      }
+    }
+
+    // EXPORT EXCEL RESMI (.XLSX) MULTI-SHEET
+    function exportToExcel() {
+      const data = getStoredData();
+      const wb = XLSX.utils.book_new();
+
+      const budgetSheetData = data.budgets.map(b => ({
+        "Pos Alokasi": b.name,
+        "Kategori": b.group,
+        "Budget": b.budget,
+        "Terpakai": b.spent,
+        "Sisa": b.budget - b.spent,
+        "Kantong": b.pocket,
+        "Bank": b.bank
+      }));
+      const wsBudgets = XLSX.utils.json_to_sheet(budgetSheetData);
+      XLSX.utils.book_append_sheet(wb, wsBudgets, "Budget & Kantong");
+
+      const txSheetData = data.transactions.map(t => ({
+        "Tanggal": t.date,
+        "Pos": t.posName,
+        "Tipe": t.type,
+        "Nominal": t.amount,
+        "Catatan": t.note || ''
+      }));
+      const wsTx = XLSX.utils.json_to_sheet(txSheetData);
+      XLSX.utils.book_append_sheet(wb, wsTx, "Riwayat Transaksi");
+
+      const talanganSheetData = data.receivables.map(r => ({
+        "Tanggal": r.date,
+        "Nama Teman": r.debtor,
+        "Keperluan": r.note,
+        "Kantong Sumber": r.pocket,
+        "Nominal": r.amount,
+        "Status": r.isSettled ? "LUNAS" : "BELUM LUNAS"
+      }));
+      const wsTalangan = XLSX.utils.json_to_sheet(talanganSheetData);
+      XLSX.utils.book_append_sheet(wb, wsTalangan, "Daftar Talangan");
+
+      XLSX.writeFile(wb, `Klir_Keuangan_Ester_${new Date().toISOString().split('T')[0]}.xlsx`);
+    }
+
+    window.onload = function() {
+      const data = getStoredData();
+      document.getElementById('settingPin').value = data.config.pin;
+      document.getElementById('settingPayday').value = data.config.paydayDate;
+      lucide.createIcons();
+    };
+  </script>
+</body>
+</html>
